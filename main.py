@@ -4,45 +4,65 @@ from time import sleep
 import numpy as np
 import colorama
 from colorama import Fore, Back
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
 
 
 colorama.init(autoreset=True)
 np.random.seed(42)
 
+color_to_foreground = {
+    'red': Fore.RED,
+    'green': Fore.GREEN,
+    'blue': Fore.BLUE,
+    'yellow': Fore.YELLOW,
+    'magenta': Fore.MAGENTA,
+    'cyan': Fore.CYAN,
+    }
+color_to_background = {
+    'red': Back.LIGHTRED_EX,
+    'green': Back.LIGHTGREEN_EX,
+    'blue': Back.LIGHTBLUE_EX,
+    'yellow': Back.LIGHTYELLOW_EX,
+    'magenta': Back.LIGHTMAGENTA_EX,
+    'cyan': Back.LIGHTCYAN_EX,
+}
+
 
 class BrainPond():
 
-    max_int = np.int8(127)
-    min_int = np.int8(-128)
+    max_int = 127
+    min_int = -128
 
     char_color_tuples = [
-        ('@', Fore.GREEN),  # execution start (random direction)
-        ('<', Fore.YELLOW),  # move current head left
-        ('>', Fore.YELLOW),  # move current head right
-        ('^', Fore.YELLOW),  # move current head up
-        ('v', Fore.YELLOW),  # move current head down
-        ('+', Fore.MAGENTA),  # increment number at tape head by one
-        ('-', Fore.MAGENTA),  # decrement number at tape head by one
-        ('i', Fore.BLUE),  # select instruction head. movements change direction of instruction execution.
-        ('t', Fore.BLUE),  # select tape head
-        ('a', Fore.BLUE),  # select head a
-        ('b', Fore.BLUE),  # select head b
-        ('c', Fore.BLUE),  # select head c
-        ('.', Fore.CYAN),  # copy from current to previous head in stack. copying to tape is free.
-        (',', Fore.CYAN),  # copy from previous to current head in stack. copying to tape is free.
-        ('[', Fore.RED),  # if the number at the current head is negative, jump to after the matching ]
-        (']', Fore.RED),  # if the number at the current head is positive, jump to after the matching [
+        ('@', 'green'),  # execution start (random direction)
+        ('<', 'yellow'),  # move current head left
+        ('>', 'yellow'),  # move current head right
+        ('^', 'yellow'),  # move current head up
+        ('v', 'yellow'),  # move current head down
+        ('+', 'magenta'),  # increment number at tape head by one
+        ('-', 'magenta'),  # decrement number at tape head by one
+        ('i', 'blue'),  # select instruction head. movements change direction of instruction execution.
+        ('t', 'blue'),  # select tape head
+        ('a', 'blue'),  # select head a
+        ('b', 'blue'),  # select head b
+        ('c', 'blue'),  # select head c
+        ('.', 'cyan'),  # copy from current to previous head in stack. copying to tape is free.
+        (',', 'cyan'),  # copy from previous to current head in stack. copying to tape is free.
+        ('[', 'red'),  # if the number at the current head is negative, jump to after the matching ]
+        (']', 'red'),  # if the number at the current head is positive, jump to after the matching [
     ]
     num_to_char = {np.int8(num): char for num, (char, color) in enumerate(char_color_tuples)}
     char_to_num = {char: np.int8(num) for num, (char, color) in enumerate(char_color_tuples)}
     char_to_color = {char: color for num, (char, color) in enumerate(char_color_tuples)}
+    num_to_color = {np.int8(num): color for num, (char, color) in enumerate(char_color_tuples)}
 
     head_to_color = {
-        'i': Back.LIGHTYELLOW_EX,
-        't': Back.LIGHTMAGENTA_EX,
-        'a': Back.LIGHTRED_EX,
-        'b': Back.LIGHTGREEN_EX,
-        'c': Back.LIGHTBLUE_EX,
+        'i': 'yellow',
+        't': 'magenta',
+        'a': 'red',
+        'b': 'green',
+        'c': 'blue',
     }
 
     inv_direction = {
@@ -63,6 +83,13 @@ class BrainPond():
         self.tape_height = tape_height
         self.grid = np.random.randint(-16, 16, size=(self.height, self.width), dtype=np.int8)
 
+        cmap_list = [self.num_to_color.get(i, 'white') for i in range(self.min_int, self.max_int + 1)]
+        cmap = ListedColormap(cmap_list)
+        self.fig, ax = plt.subplots()
+        self.pixel_map = ax.imshow(self.grid, cmap=cmap, interpolation='nearest', vmin=self.min_int, vmax=self.max_int)
+        self.fig.canvas.draw()
+        plt.show(block=False)
+
     def print(self, x0, y0, x1, y1, head_coords={}):
         for i in range(x0, x1):
             for j in range(y0, y1):
@@ -74,16 +101,22 @@ class BrainPond():
                     if head == 't':
                         continue
                     if (i, j) == coord:
-                        background_color = self.head_to_color[head]
+                        head_color = self.head_to_color[head]
+                        background_color = color_to_background[head_color]
 
                 if char:
-                    color = self.char_to_color[char]
-                    string = f"{background_color}{color}   {char} "
+                    char_color = self.char_to_color[char]
+                    foreground_color = color_to_foreground[char_color]
+                    string = f"{background_color}{foreground_color}   {char} "
                 else:
                     string = f"{background_color}{num:5d}"
                 print(string, end='')
             print()
         print()
+
+    def show(self):
+        self.pixel_map.set_data(self.grid)
+        plt.pause(0.01)  # update plot
 
     def seed(self, seed, coord):
         x, y = coord
@@ -103,6 +136,7 @@ class BrainPond():
         entrypoin_coordinate_tuple = np.where(self.grid == entrypoin_number)
         entrypoin_coordinates = np.array(list(zip(entrypoin_coordinate_tuple[0],
                                                   entrypoin_coordinate_tuple[1])), dtype=int)
+        assert len(entrypoin_coordinates) > 0
         random_index = np.random.choice(len(entrypoin_coordinates))
         entrypoin_coord = entrypoin_coordinates[random_index]
         entrypoin_coord = tuple(entrypoin_coord)
@@ -225,7 +259,7 @@ class BrainPond():
 
 
 if __name__ == '__main__':
-    pond = BrainPond()
+    pond = BrainPond(256, 256)
 
     seed = ['@avt[ab.a>b>]']
     # pond.seed(seed, (0, 0))
@@ -247,3 +281,4 @@ if __name__ == '__main__':
         if i % 100 == 0:
             print(i)
             pond.print(0, 0, 40, 40)
+            pond.show()
