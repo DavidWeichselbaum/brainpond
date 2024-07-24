@@ -31,8 +31,13 @@ color_to_background = {
 
 class BrainPond():
 
-    max_int = 127
     min_int = -128
+    max_int = 127
+
+    min_int_seed = -16
+    max_int_seed = 16
+
+    copy_cost = 256  # steps
 
     char_color_tuples = [
         ('@', 'green'),  # execution start (random direction)
@@ -52,10 +57,10 @@ class BrainPond():
         ('[', 'red'),  # if the number at the current head is negative, jump to after the matching ]
         (']', 'red'),  # if the number at the current head is positive, jump to after the matching [
     ]
-    num_to_char = {np.int8(num): char for num, (char, color) in enumerate(char_color_tuples)}
-    char_to_num = {char: np.int8(num) for num, (char, color) in enumerate(char_color_tuples)}
-    char_to_color = {char: color for num, (char, color) in enumerate(char_color_tuples)}
-    num_to_color = {np.int8(num): color for num, (char, color) in enumerate(char_color_tuples)}
+    num_to_char = {np.int8(num): char for num, (char, color) in enumerate(char_color_tuples, 1)}
+    char_to_num = {char: np.int8(num) for num, (char, color) in enumerate(char_color_tuples, 1)}
+    char_to_color = {char: color for num, (char, color) in enumerate(char_color_tuples, 1)}
+    num_to_color = {np.int8(num): color for num, (char, color) in enumerate(char_color_tuples, 1)}
 
     head_to_color = {
         'i': 'yellow',
@@ -81,7 +86,9 @@ class BrainPond():
         self.width = width
         self.tape_width = tape_width
         self.tape_height = tape_height
-        self.grid = np.random.randint(-16, 16, size=(self.height, self.width), dtype=np.int8)
+        # self.grid = np.random.randint(self.min_int_seed, self.max_int_seed,
+        #                               size=(self.height, self.width), dtype=np.int8)
+        self.grid = np.zeros((self.height, self.width), dtype=np.int8)
 
         cmap_list = [self.num_to_color.get(i, 'white') for i in range(self.min_int, self.max_int + 1)]
         cmap = ListedColormap(cmap_list)
@@ -132,18 +139,24 @@ class BrainPond():
                 self.grid[i_wrapped, j_wrapped] = number
 
     def execute_random(self, steps, print_=False):
-        entrypoin_number = self.char_to_num['@']
-        entrypoin_coordinate_tuple = np.where(self.grid == entrypoin_number)
-        entrypoin_coordinates = np.array(list(zip(entrypoin_coordinate_tuple[0],
-                                                  entrypoin_coordinate_tuple[1])), dtype=int)
-        assert len(entrypoin_coordinates) > 0
+        entrypoin_coordinates = self.get_entypoints()
+        if len(entrypoin_coordinates) == 0:  # wait to indel mutate more entrypoints
+            return
         random_index = np.random.choice(len(entrypoin_coordinates))
         entrypoin_coord = entrypoin_coordinates[random_index]
         entrypoin_coord = tuple(entrypoin_coord)
 
-        direction = np.random.choice(list('<>^v'))
+        # direction = np.random.choice(list('<>^v'))
+        direction = '>'
 
         self.execute(entrypoin_coord, direction, steps, print_=print_)
+
+    def get_entypoints(self):
+        entrypoin_number = self.char_to_num['@']
+        entrypoin_coordinate_tuple = np.where(self.grid == entrypoin_number)
+        entrypoin_coordinates = np.array(list(zip(entrypoin_coordinate_tuple[0],
+                                                  entrypoin_coordinate_tuple[1])), dtype=int)
+        return entrypoin_coordinates
 
     def execute(self, start_coord, instruction_direction, steps, print_=False):
         coords = {
@@ -156,7 +169,9 @@ class BrainPond():
         head_stack = deque('ti', maxlen=2)  # start with tape and instruction headers
         tape = np.zeros((self.tape_height, self.tape_width), dtype=np.int8)
 
-        for step in range(steps):
+        step = steps
+        while step > 0:
+            step -= 1
             if print_:
                 print(step)
                 self.print(0, 0, 40, 40, coords)
@@ -198,7 +213,9 @@ class BrainPond():
                     else:
                         from_coord = previous_head_coord
                         to_coord = current_head_coord
-                    self.grid[to_coord] = self.grid[from_coord]
+                    if self.grid[to_coord] != self.grid[from_coord]:
+                        self.grid[to_coord] = self.grid[from_coord]
+                        step -= self.copy_cost  # only add cost if something is actually copied
                 case '[' | ']':
                     current_head_coord = coords[current_head]
                     if current_head == 't':
@@ -214,6 +231,14 @@ class BrainPond():
                     raise Exception
 
             coords['i'] = self._update_coordinates(coords['i'], instruction_direction)
+
+    def mutate(self, prob):
+        num_replacements = int(prob * self.width * self.height)
+        assert num_replacements > 0
+        rows = np.random.randint(0, self.height, num_replacements)
+        cols = np.random.randint(0, self.width, num_replacements)
+        rand_numbers = np.random.randint(self.min_int_seed, self.max_int_seed, size=num_replacements, dtype=np.int8)
+        self.grid[rows, cols] = rand_numbers
 
     def _update_coordinates(self, coord, direction=None, head='i'):
         x, y = coord
@@ -259,26 +284,26 @@ class BrainPond():
 
 
 if __name__ == '__main__':
-    pond = BrainPond(256, 256)
+    # pond = BrainPond(1024, 1024)
+    pond = BrainPond(265, 265)
 
-    seed = ['@avt[ab.a>b>]']
-    # pond.seed(seed, (0, 0))
+    seed = ['>i@avt[ab.a>b>]']
+    # for i in range(pond.height):
+    #     for j in range(0, pond.width, len(seed[0])+1):
+    #         pond.seed(seed, (i, j))
+    # for i in range(pond.height):
+    #     pond.seed(seed, (i, 0))
+    pond.seed(seed, (0, 0))
+    # pond.print(0, 0, 40, 40)
 
-    for i in range(100):
-        pond.seed(seed, (i, 0))
-
-    # pond.execute((0, 0), '>', 300, print_=True)
-    # for i in range(100000):
-    #     coord = (i, 0)
-    #     coord = pond._update_coordinates(coord)
-    #     pond.execute(coord, '>', 200)
-    #     if i % 10 == 0:
-    #         print(i)
-    #         pond.print(0, 0, 40, 40)
-
-    for i in range(100000):
-        pond.execute_random(300)
-        if i % 100 == 0:
-            print(i)
+    i = 0
+    while True:
+        i += 1
+        pond.execute_random(512)
+        if i % 1000 == 0:
+            pond.mutate(0.001)
+        if i % 1000 == 0:
+            n_entries = len(pond.get_entypoints())
+            print(f"Step: {i}, entrypoints: {n_entries}")
             pond.print(0, 0, 40, 40)
             pond.show()
